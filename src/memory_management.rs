@@ -63,16 +63,11 @@ impl MemoryManagement {
             match op.operation {
                 'A' => {
                     for i in 0..self.blocks_vec.len() {
-                        let max = self
-                            .blocks_vec
-                            .iter()
-                            .filter(|block| block.is_avalible())
-                            .map(|block| block.get_size())
-                            .max();
+                        let max = self.get_max();
                         if self.blocks_vec[i].get_size() >= op.argument.unwrap() {
                             self.alloc(i, op)
-                        } else if max.unwrap() < op.argument.unwrap() {
-                            self.error(op.bl_id.unwrap(), op.id, max.unwrap(), 'A')
+                        } else if max < op.argument.unwrap() {
+                            self.error(op.bl_id.unwrap(), op.id, max, 'A')
                         }
                     }
                 }
@@ -89,16 +84,11 @@ impl MemoryManagement {
             match op.operation {
                 'A' => {
                     for i in 0..self.blocks_vec.len() {
-                        let max = self
-                            .blocks_vec
-                            .iter()
-                            .filter(|block| block.is_avalible())
-                            .map(|block| block.get_size())
-                            .max();
+                        let max = self.get_max();
                         if self.blocks_vec[i].get_size() >= op.argument.unwrap() {
                             self.alloc(i, op)
-                        } else if max.unwrap() < op.argument.unwrap() {
-                            self.error(op.bl_id.unwrap(), op.id, max.unwrap(), 'A')
+                        } else if max < op.argument.unwrap() {
+                            self.error(op.bl_id.unwrap(), op.id, max, 'A')
                         }
                     }
                 }
@@ -111,12 +101,7 @@ impl MemoryManagement {
     }
 
     fn alloc(&mut self, i: usize, op: Operation) {
-        let max = self
-            .blocks_vec
-            .iter()
-            .filter(|block| block.is_avalible())
-            .map(|block| block.get_size())
-            .max();
+        let max = self.get_max();
         if self.blocks_vec[i].can_be_placed(op) {
             let end = self.blocks_vec[i].end;
             self.blocks_vec[i].operation = Some(op);
@@ -126,8 +111,8 @@ impl MemoryManagement {
                 self.blocks_vec
                     .push(Block::new_full(self.blocks_vec[i].end + 1, end));
             }
-        } else if max.unwrap() < op.argument.unwrap() {
-            self.error(op.bl_id.unwrap(), op.id, max.unwrap(), 'A')
+        } else if max < op.argument.unwrap() {
+            self.error(op.bl_id.unwrap(), op.id, max, 'A')
         }
     }
 
@@ -159,13 +144,7 @@ impl MemoryManagement {
     }
 
     pub fn fragmentation(&self) -> f64 {
-        let max = self
-            .blocks_vec
-            .iter()
-            .filter(|block| block.is_avalible())
-            .map(|block| block.get_size())
-            .max();
-
+        let max = self.get_max();
         let sum: i32 = self
             .blocks_vec
             .iter()
@@ -173,7 +152,7 @@ impl MemoryManagement {
             .map(|block| block.get_size())
             .sum();
 
-        (1.0 - (max.unwrap() as f64 / sum as f64)) as f64
+        (1.0 - (max as f64 / sum as f64)) as f64
     }
 
     fn join_blocks(&mut self) {
@@ -207,7 +186,6 @@ impl MemoryManagement {
             .iter()
             .filter(|block| !block.is_avalible())
             .any(|block| block.operation.unwrap().bl_id.unwrap() == bl_id.unwrap());
-        println!("{}", t);
         if self.tried_alloc(bl_id) == 1 {
             self.error(bl_id.unwrap(), id, self.tried_alloc(bl_id), 'D');
         } else if !t {
@@ -224,6 +202,16 @@ impl MemoryManagement {
             Some(Result::AllocError(_, _, _)) => 1,
             _ => 0,
         }
+    }
+
+    fn get_max(&self) -> i32 {
+        let max = self
+            .blocks_vec
+            .iter()
+            .filter(|block| block.is_avalible())
+            .map(|block| block.get_size())
+            .max();
+        max.unwrap()
     }
 
     pub fn print_block(&self) -> (Vec<String>, Vec<String>) {
