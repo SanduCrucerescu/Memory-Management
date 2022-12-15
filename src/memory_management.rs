@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{block::Block, block::Operation, file_api::FileApi};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -192,19 +190,7 @@ impl MemoryManagement {
         }
     }
     fn dealloc(&mut self, bl_id: Option<i32>, id: usize) {
-        let err = self.errors.iter().any(|e| e.get_id() == bl_id.unwrap());
-        println!("{}", err);
-        if err {
-            self.error(bl_id.unwrap(), id, 1, 'D')
-        }
-        let e = self
-            .blocks_vec
-            .iter()
-            .any(|block| block.operation.unwrap().bl_id != bl_id);
-        if e && !err {
-            self.error(bl_id.unwrap(), id, 0, 'D')
-        }
-        //TODO: - fix the dealloc error
+        self.dealloc_err(bl_id, id);
         for i in 0..self.blocks_vec.len() {
             if self.blocks_vec[i].operation.is_some() {
                 if self.blocks_vec[i].operation.unwrap().bl_id == bl_id {
@@ -213,6 +199,31 @@ impl MemoryManagement {
             }
         }
         self.join_blocks()
+    }
+
+    fn dealloc_err(&mut self, bl_id: Option<i32>, id: usize) {
+        let t = self
+            .blocks_vec
+            .iter()
+            .filter(|block| !block.is_avalible())
+            .any(|block| block.operation.unwrap().bl_id.unwrap() == bl_id.unwrap());
+        println!("{}", t);
+        if self.tried_alloc(bl_id) == 1 {
+            self.error(bl_id.unwrap(), id, self.tried_alloc(bl_id), 'D');
+        } else if !t {
+            self.error(bl_id.unwrap(), id, self.tried_alloc(bl_id), 'D');
+        }
+    }
+
+    fn tried_alloc(&self, bl_id: Option<i32>) -> i32 {
+        let t = self.errors.iter().find(|e| match e {
+            Result::AllocError(id, _, _) => id == &bl_id.unwrap(),
+            _ => false,
+        });
+        match t {
+            Some(Result::AllocError(_, _, _)) => 1,
+            _ => 0,
+        }
     }
 
     pub fn print_block(&self) -> (Vec<String>, Vec<String>) {
