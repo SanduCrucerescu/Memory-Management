@@ -1,4 +1,8 @@
-use crate::{block::Block, block::Operation, file_api::FileApi};
+use crate::{
+    block::Block,
+    block::{self, Operation},
+    file_api::FileApi,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Result {
@@ -45,13 +49,27 @@ impl MemoryManagement {
         for op in self.operations.clone() {
             match op.operation {
                 'A' => {
-                    for i in 0..self.blocks_vec.len() {
-                        self.alloc(i, op)
+                    let mut j: Option<usize> = None;
+                    for (i, block) in self.blocks_vec.iter().enumerate() {
+                        if block.is_avalible() {
+                            if self.blocks_vec[i].get_size() >= op.argument.unwrap() {
+                                j = Some(i);
+                                break;
+                            }
+                        }
+                    }
+
+                    match j {
+                        Some(i) => self.alloc(i, op),
+                        None => {
+                            let max = self.get_max();
+                            self.error(op.bl_id.unwrap(), op.id, max, 'A');
+                        }
                     }
                 }
                 'D' => self.dealloc(op.bl_id, op.id),
                 'O' => self.output("First fit"),
-                'C' => println!("test"),
+                'C' => self.compact(),
                 _ => todo!(),
             }
         }
@@ -62,18 +80,33 @@ impl MemoryManagement {
         for op in self.operations.clone() {
             match op.operation {
                 'A' => {
-                    for i in 0..self.blocks_vec.len() {
-                        let max = self.get_max();
-                        if self.blocks_vec[i].get_size() >= op.argument.unwrap() {
-                            self.alloc(i, op)
-                        } else if max < op.argument.unwrap() {
-                            self.error(op.bl_id.unwrap(), op.id, max, 'A')
+                    let mut j: Option<usize> = None;
+                    for (i, block) in self.blocks_vec.iter().enumerate() {
+                        if block.is_avalible() {
+                            if block.get_size() >= op.argument.unwrap() {
+                                match j {
+                                    Some(idx) => {
+                                        if block.get_size() < self.blocks_vec[idx].get_size() {
+                                            j = Some(i);
+                                        }
+                                    }
+                                    None => j = Some(i),
+                                }
+                            }
+                        }
+                    }
+
+                    match j {
+                        Some(i) => self.alloc(i, op),
+                        None => {
+                            let max = self.get_max();
+                            self.error(op.bl_id.unwrap(), op.id, max, 'A');
                         }
                     }
                 }
                 'D' => self.dealloc(op.bl_id, op.id),
                 'O' => self.output("Best fit"),
-                'C' => println!("test"),
+                'C' => self.compact(),
                 _ => todo!(),
             }
         }
@@ -83,37 +116,47 @@ impl MemoryManagement {
         for op in self.operations.clone() {
             match op.operation {
                 'A' => {
-                    for i in 0..self.blocks_vec.len() {
-                        let max = self.get_max();
-                        if self.blocks_vec[i].get_size() >= op.argument.unwrap() {
-                            self.alloc(i, op)
-                        } else if max < op.argument.unwrap() {
-                            self.error(op.bl_id.unwrap(), op.id, max, 'A')
+                    let mut j: Option<usize> = None;
+                    for (i, block) in self.blocks_vec.iter().enumerate() {
+                        if block.is_avalible() {
+                            if block.get_size() >= op.argument.unwrap() {
+                                match j {
+                                    Some(idx) => {
+                                        if block.get_size() > self.blocks_vec[idx].get_size() {
+                                            j = Some(i);
+                                        }
+                                    }
+                                    None => j = Some(i),
+                                }
+                            }
+                        }
+                    }
+                    match j {
+                        Some(i) => self.alloc(i, op),
+                        None => {
+                            let max = self.get_max();
+                            self.error(op.bl_id.unwrap(), op.id, max, 'A');
                         }
                     }
                 }
                 'D' => self.dealloc(op.bl_id, op.id),
                 'O' => self.output("Worst fit"),
-                'C' => println!("test"),
+                'C' => self.compact(),
                 _ => todo!(),
             }
         }
     }
 
     fn alloc(&mut self, i: usize, op: Operation) {
-        let max = self.get_max();
-        if self.blocks_vec[i].can_be_placed(op) {
-            let end = self.blocks_vec[i].end;
-            self.blocks_vec[i].operation = Some(op);
-            let start = self.blocks_vec[i].start;
-            self.blocks_vec[i].set_range(start, start + op.argument.unwrap() - 1);
-            if self.blocks_vec[i].end < end {
-                self.blocks_vec
-                    .push(Block::new_full(self.blocks_vec[i].end + 1, end));
-            }
-        } else if max < op.argument.unwrap() {
-            self.error(op.bl_id.unwrap(), op.id, max, 'A')
+        let start = self.blocks_vec[i].start;
+        let end = self.blocks_vec[i].end;
+        self.blocks_vec[i].operation = Some(op);
+        self.blocks_vec[i].set_range(start, start + op.argument.unwrap() - 1);
+        if self.blocks_vec[i].end < end {
+            let b = Block::new_empty(self.blocks_vec[i].end + 1, end);
+            self.blocks_vec.insert(i + 1, b);
         }
+        self.blocks_vec.sort_by(|a, b| a.start.cmp(&b.start));
     }
 
     fn error(&mut self, bl_id: i32, id: usize, par: i32, typ: char) {
@@ -155,6 +198,32 @@ impl MemoryManagement {
         (1.0 - (max as f64 / sum as f64)) as f64
     }
 
+    fn exists(&self, id: i32) -> bool {
+        self.blocks_vec
+            .iter()
+            .filter(|block| !block.is_avalible())
+            .any(|block| block.operation.unwrap().bl_id.unwrap() == id)
+    }
+
+    fn compact(&mut self) {
+        let mut last_start = 0;
+        let mut temp: Vec<Block> = Vec::new();
+        self.blocks_vec.sort_by(|a, b| a.start.cmp(&b.start));
+        for block in self.blocks_vec.clone() {
+            if !block.is_avalible() {
+                let size = block.get_size();
+                let b =
+                    Block::new_full(last_start, last_start + size - 1, block.operation.unwrap());
+                last_start = b.end + 1;
+                temp.push(b);
+            }
+        }
+
+        temp.push(Block::new_empty(last_start, self.max_bytes - 1));
+
+        self.blocks_vec = temp;
+    }
+
     fn join_blocks(&mut self) {
         'outer: for i in 1..self.blocks_vec.len() {
             if self.blocks_vec[i].is_avalible() && self.blocks_vec[i - 1].is_avalible() {
@@ -168,6 +237,7 @@ impl MemoryManagement {
             }
         }
     }
+
     fn dealloc(&mut self, bl_id: Option<i32>, id: usize) {
         self.dealloc_err(bl_id, id);
         for i in 0..self.blocks_vec.len() {
@@ -177,7 +247,9 @@ impl MemoryManagement {
                 }
             }
         }
-        self.join_blocks()
+        self.blocks_vec.sort_by(|a, b| a.start.cmp(&b.start));
+
+        self.join_blocks();
     }
 
     fn dealloc_err(&mut self, bl_id: Option<i32>, id: usize) {
@@ -215,10 +287,14 @@ impl MemoryManagement {
     }
 
     pub fn print_block(&self) -> (Vec<String>, Vec<String>) {
-        let blocks = self
+        let mut blocks = self
             .blocks_vec
             .iter()
             .filter(|block| !block.is_avalible())
+            .collect::<Vec<_>>();
+        blocks.sort_by(|a, b| a.operation.unwrap().bl_id.cmp(&b.operation.unwrap().bl_id));
+        let b = blocks
+            .iter()
             .map(|block| block.display_block())
             .collect::<Vec<_>>();
         let free = self
@@ -228,6 +304,6 @@ impl MemoryManagement {
             .map(|block| block.display_block())
             .collect::<Vec<_>>();
 
-        (blocks, free)
+        (b, free)
     }
 }

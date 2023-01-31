@@ -1,4 +1,6 @@
-#[derive(Debug, Clone)]
+use std::slice::SliceIndex;
+
+#[derive(Debug, Clone, Copy)]
 pub struct Block {
     pub start: i32,
     pub end: i32,
@@ -14,7 +16,15 @@ impl Block {
         }
     }
 
-    pub fn new_full(new_start: i32, new_end: i32) -> Block {
+    pub fn new_full(new_start: i32, new_end: i32, op: Operation) -> Block {
+        Block {
+            start: new_start,
+            end: new_end,
+            operation: Some(op),
+        }
+    }
+
+    pub fn new_empty(new_start: i32, new_end: i32) -> Block {
         Block {
             start: new_start,
             end: new_end,

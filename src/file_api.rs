@@ -1,6 +1,6 @@
 use crate::block::Operation;
 use crate::memory_management;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io::{BufRead, Write};
 use std::{fs, io};
 
@@ -56,7 +56,7 @@ impl FileApi {
                     let l = line.split(";").collect::<Vec<&str>>();
                     let compress = Operation {
                         id: operations.len() + 1,
-                        bl_id: Some(l[1].parse::<i32>().unwrap()),
+                        bl_id: None,
                         operation: l[0].chars().nth(0).unwrap(),
                         argument: None,
                     };
@@ -87,60 +87,70 @@ impl FileApi {
         free: Vec<String>,
         errors: Vec<memory_management::Result>,
     ) {
-        let mut filename = String::new();
+        let mut file: Result<File, std::io::Error>;
         if int {
-            filename = format!("{}.out{}", self.filename, self.out);
-        } else {
-            filename = format!("{}.out", self.filename);
-        }
-        //let mut file = fs::File::create(filename).expect("Unable to create file");
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .create(true)
-            .open(filename)
-            .expect("Unable to open file");
-        let temp = vec![
-            "\nAllocated blocks",
-            "Free blocks",
-            "Fragmentation",
-            "\nErrors",
-        ];
-        file.write_all(method.as_bytes())
-            .expect("Unable to write data");
-        for (i, t) in temp.iter().enumerate() {
-            file.write_all(t.as_bytes()).expect("Unable to write data");
-            file.write_all("\n".as_bytes())
-                .expect("Unable to write data");
-            if i == 0 {
-                for block in all.clone() {
-                    let b = format!("{}\n", block);
-                    file.write_all(b.as_bytes()).expect("Unable to write data");
+            file = fs::OpenOptions::new()
+                .write(true)
+                .append(true)
+                .open(format!("{}.out{}", self.filename, self.out));
+            match file {
+                Ok(ref mut f) => {
+                    f.write_all("\n".as_bytes()).unwrap();
                 }
-            } else if i == 1 {
-                for block in free.clone() {
-                    let b = format!("{}\n", block);
-                    file.write_all(b.as_bytes()).expect("Unable to write data");
-                }
-            } else if i == 2 {
-                let frag = format!("{:.6}", fragmentation);
-                file.write_all(frag.as_bytes())
-                    .expect("Unable to write data");
-            } else if i == 3 {
-                let mut err = String::new();
-                if errors.is_empty() {
-                    err = format!("{}", "None");
-                    file.write_all(err.as_bytes())
-                        .expect("Unable to write data");
-                } else {
-                    for e in errors.clone() {
-                        err = format!("{}\n", e);
-                        file.write_all(err.as_bytes())
-                            .expect("Unable to write data");
-                    }
+                Err(_) => {
+                    file = Ok(fs::OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .open(format!("{}.out{}", self.filename, self.out))
+                        .expect("Unable to open file"));
                 }
             }
+        } else {
+            file = Ok(fs::OpenOptions::new()
+                .write(true)
+                .append(true)
+                .create(true)
+                .open(format!("{}.out", self.filename))
+                .expect("Unable to open file"));
         }
+        let mut str = self.buff(method, fragmentation, all, free, errors);
+        file.unwrap()
+            .write_all(str.as_bytes())
+            .expect("Unable to write data");
+    }
+
+    pub fn buff(
+        &self,
+        method: &str,
+        fragmentation: f64,
+        all: Vec<String>,
+        free: Vec<String>,
+        errors: Vec<memory_management::Result>,
+    ) -> String {
+        let mut str = String::new();
+        str.push_str(method);
+        str.push_str("\nAllocated blocks\n");
+        for block in all.clone() {
+            str.push_str(&block);
+            str.push_str("\n");
+        }
+        str.push_str("Free blocks\n");
+        for block in free.clone() {
+            str.push_str(&block);
+            str.push_str("\n");
+        }
+        str.push_str("Fragmentation\n");
+        str.push_str(format!("{:.6}", fragmentation).as_str());
+        str.push_str("\nErrors\n");
+        if errors.is_empty() {
+            str.push_str("None\n");
+        } else {
+            for e in errors.clone() {
+                str.push_str(&e.to_string());
+                str.push_str("\n");
+            }
+        }
+        str
     }
 
     pub fn clear_file(&self) {

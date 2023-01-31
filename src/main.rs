@@ -2,8 +2,9 @@ use assigment_1_rust::file_api;
 use assigment_1_rust::memory_management;
 fn main() {
     let mut frag = Default::default();
+    let path = std::env::args().nth(1).expect("No path provided");
     let file_api = file_api::FileApi {
-        filename: String::from("scenario"),
+        filename: String::from(path),
         out: 0,
     };
     file_api.clear_file();
@@ -23,14 +24,12 @@ fn main() {
     file_api.write_file(false, "First Fit", frag, all, free, m.errors);
 
     let mut m1 = management.clone();
-    m1.file_api.out = m.file_api.out;
     m1.best_fit();
     let (all, free) = m1.print_block();
     frag = m1.fragmentation();
     file_api.write_file(false, "\nBest Fit", frag, all, free, m1.errors);
 
     let mut m2 = management.clone();
-    m2.file_api.out = m1.file_api.out;
     m2.worst_fit();
     let (all, free) = m2.print_block();
     frag = m2.fragmentation();
